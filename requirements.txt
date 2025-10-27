@@ -1,4 +1,4 @@
-python-telegram-bot==20.8
+python-telegram-bot==20.7
 APScheduler==3.10.4
 nest_asyncio
-pytz
+pytz==2024.1

@@ -16,10 +16,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TOKEN = '8243652882:AAHRqQAvGczyooTy8WB6U6YLmk9CXgfTpJE'
-WATCHER_ID = 104164928   # 👀 آریان (ناظر)
-TARGET_ID = 141472605    # 🎯 آتنا (هدف)
-DB_PATH = 'athena_data.db'
-TZ_IR = timezone('Asia/Tehran')  # ⏰ تایم‌زون تهران
+WATCHER_ID = 141472605   # 👀 آریان (ناظر)
+TARGET_ID = 104164928    # 🎯 آتنا (هدف)
+DB_PATH = 'athena_data.db'  # 🗄️ نام دیتابیس
+TZ_IR = timezone('Asia/Tehran')
 
 # ====== 💬 پیام‌های متنوع ======
 QUESTION_MESSAGES = [
@@ -44,7 +44,7 @@ MILESTONE_MESSAGES = {
     30: "👑 یک ماه کامل! قهرمان واقعی 🌟",
 }
 
-# ====== 🗄️ مدیریت دیتابیس با Context Manager ======
+# ====== 🗄️ مدیریت دیتابیس ======
 @contextmanager
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -60,11 +60,10 @@ def get_db():
 
 
 def init_db():
-    """ساخت جداول اولیه دیتابیس"""
+    """ساخت جداول اولیه"""
     with get_db() as conn:
         cursor = conn.cursor()
-
-        # جدول استریک
+        
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS streak (
                 id INTEGER PRIMARY KEY,
@@ -73,8 +72,7 @@ def init_db():
                 best_streak INTEGER DEFAULT 0
             )
         """)
-
-        # جدول تاریخچه
+        
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,42 +82,35 @@ def init_db():
                 timestamp TEXT
             )
         """)
-
+        
         cursor.execute(
-            "INSERT OR IGNORE INTO streak (id, streak, best_streak) VALUES (?, ?, ?)",
+            "INSERT OR IGNORE INTO streak (id, streak, best_streak) VALUES (?, ?, ?)", 
             (TARGET_ID, 0, 0)
         )
-
+        
         logger.info("✅ Database initialized successfully")
 
 
-# ====== 📊 توابع دیتابیس ======
 def get_streak_data():
-    """دریافت اطلاعات استریک"""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT streak, last_answer, best_streak FROM streak WHERE id=?",
+            "SELECT streak, last_answer, best_streak FROM streak WHERE id=?", 
             (TARGET_ID,)
         )
         return cursor.fetchone()
 
 
 def update_streak(new_streak: int, answer_date: str):
-    """به‌روزرسانی استریک"""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT best_streak FROM streak WHERE id=?",
-            (TARGET_ID,)
-        )
+        cursor.execute("SELECT best_streak FROM streak WHERE id=?", (TARGET_ID,))
         best = cursor.fetchone()[0]
-
-        # آپدیت بهترین استریک
+        
         if new_streak > best:
             best = new_streak
             logger.info(f"🎉 New record! Best streak: {best}")
-
+        
         cursor.execute(
             "UPDATE streak SET streak=?, last_answer=?, best_streak=? WHERE id=?",
             (new_streak, answer_date, best, TARGET_ID)
@@ -127,7 +118,6 @@ def update_streak(new_streak: int, answer_date: str):
 
 
 def add_history(went: bool):
-    """ذخیره در تاریخچه"""
     with get_db() as conn:
         cursor = conn.cursor()
         now = datetime.now(TZ_IR)
@@ -137,45 +127,41 @@ def add_history(went: bool):
         )
 
 
-# ====== 🚀 دستورات بات ======
+# ====== 🚀 دستورات ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دستور /start"""
-    user_id = update.message.chat_id
-
+    user_id = update.message.from_user.id
+    
     if user_id == TARGET_ID:
         data = get_streak_data()
         streak = data[0] if data else 0
-
         await update.message.reply_text(
             f"سلام آتنا جون! 💎\n\n"
             f"🔥 استریک فعلی: {streak} روز\n"
-            f"⏰ هر روز ساعت ۹ شب ازت می‌پرسم مغازه رفتی یا نه\n\n"
-            f"برای دیدن استریکت می‌تونی /mystats بزنی 📊"
+            f"⏰ هر روز ساعت ۹ شب ازت می‌پرسم\n\n"
+            f"📊 /mystats - برای دیدن آمار"
         )
     elif user_id == WATCHER_ID:
         await update.message.reply_text(
             "سلام آریان! 👀\n\n"
-            "دستورات ناظر:\n"
             "📊 /status - وضعیت کامل\n"
-            "📜 /history - تاریخچه ۷ روز گذشته\n"
-            "🔔 /test_question - تست ارسال سؤال (فقط برای تست)"
+            "📜 /history - تاریخچه\n"
+            "🔔 /test_question - تست"
         )
     else:
-        await update.message.reply_text(
-            "سلام! این بات مخصوص آتنا و آریانه 😊"
-        )
+        await update.message.reply_text("این بات مخصوص آتنا و آریانه 😊")
 
 
 async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش آمار شخصی آتنا"""
-    if update.message.chat_id != TARGET_ID:
+    user_id = update.message.from_user.id
+    
+    if user_id != TARGET_ID:
         await update.message.reply_text("این دستور فقط برای آتناست 💎")
         return
-
+    
     try:
         data = get_streak_data()
         streak, last_answer, best = data
-
+        
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -183,223 +169,196 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (TARGET_ID,)
             )
             total_success = cursor.fetchone()[0]
-
-        stats_text = (
-            f"📊 **آمار تو آتنا:**\n\n"
-            f"🔥 استریک فعلی: **{streak}** روز\n"
-            f"🏆 بهترین رکوردت: **{best}** روز\n"
-            f"✅ مجموع روزهای موفق: **{total_success}** روز\n"
-            f"📅 آخرین پاسخ: {last_answer if last_answer else 'هنوز پاسخی نداده‌ای'}\n\n"
-            f"💪 بزن بریم قهرمان!"
+        
+        await update.message.reply_text(
+            f"📊 **آمار تو:**\n\n"
+            f"🔥 استریک: **{streak}** روز\n"
+            f"🏆 رکورد: **{best}** روز\n"
+            f"✅ مجموع: **{total_success}** روز\n"
+            f"📅 آخرین: {last_answer or 'هنوز پاسخی ندادی'}",
+            parse_mode='Markdown'
         )
-
-        await update.message.reply_text(stats_text, parse_mode='Markdown')
-
     except Exception as e:
         logger.error(f"Error in my_stats: {e}")
         await update.message.reply_text("⚠️ خطا در دریافت اطلاعات")
 
 
-# ====== 📨 ارسال پیام روزانه (۲۱:۰۰ تهران) ======
 async def daily_question(context: ContextTypes.DEFAULT_TYPE):
-    """ارسال سؤال شبانه - ساعت 21:00 به وقت تهران"""
     try:
         current_time = datetime.now(TZ_IR)
-        logger.info(f"⏰ Sending daily question at {current_time.strftime('%Y-%m-%d %H:%M:%S')} Tehran time")
-
+        logger.info(f"⏰ Sending daily question at {current_time}")
+        
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE streak SET last_answer=NULL WHERE id=?", (TARGET_ID,))
-
+        
         keyboard = [
             [InlineKeyboardButton("✅ بله، رفتم", callback_data="yes")],
             [InlineKeyboardButton("❌ نه، نرفتم", callback_data="no")],
             [InlineKeyboardButton("📊 استریک من", callback_data="show_streak")]
         ]
-
-        message = random.choice(QUESTION_MESSAGES)
-
+        
         await context.bot.send_message(
             chat_id=TARGET_ID,
-            text=message,
+            text=random.choice(QUESTION_MESSAGES),
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-
-        logger.info("✉️ Daily question sent to آتنا")
-
+        logger.info("✉️ Daily question sent")
     except TelegramError as e:
-        logger.error(f"Failed to send daily question: {e}")
+        logger.error(f"Failed to send: {e}")
 
 
-# ====== ⏰ بررسی عدم پاسخ (۲۳:۰۰ تهران) ======
 async def check_no_response(context: ContextTypes.DEFAULT_TYPE):
-    """بررسی اگر پاسخ نداده باشد - ساعت 23:00 به وقت تهران"""
     try:
         current_time = datetime.now(TZ_IR)
-        logger.info(f"⏰ Checking for no response at {current_time.strftime('%Y-%m-%d %H:%M:%S')} Tehran time")
-
+        logger.info(f"⏰ Checking response at {current_time}")
+        
         data = get_streak_data()
-
-        if data and data[1] is None:  # اگر پاسخ نداده
+        
+        if data and data[1] is None:
             old_streak = data[0]
             update_streak(0, None)
             add_history(False)
-
+            
             await context.bot.send_message(
                 chat_id=TARGET_ID,
-                text=f"😢 پاسخ ندادی... استریک از {old_streak} روز به صفر رسید.\nفردا جبران می‌کنیم! 💪"
+                text=f"😢 پاسخ ندادی... استریک از {old_streak} به صفر رسید"
             )
-
             await context.bot.send_message(
                 chat_id=WATCHER_ID,
-                text=f"⚠️ آتنا امروز پاسخ نداد.\n📉 استریک: {old_streak} → 0"
+                text=f"⚠️ آتنا پاسخ نداد\n📉 {old_streak} → 0"
             )
-
-            logger.warning(f"🔄 Streak reset due to no response (was {old_streak})")
+            logger.warning(f"🔄 Streak reset (was {old_streak})")
         else:
-            logger.info("✅ آتنا has already responded today")
-
+            logger.info("✅ آتنا has responded")
     except Exception as e:
-        logger.error(f"Error in check_no_response: {e}")
+        logger.error(f"Error checking: {e}")
 
 
-# ====== 🧪 تست دستی (فقط برای ناظر) ======
 async def test_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ارسال سؤال تستی (فقط برای ناظر)"""
-    if update.message.chat_id != WATCHER_ID:
-        await update.message.reply_text("این دستور فقط برای ناظره 👀")
+    user_id = update.message.from_user.id
+    
+    if user_id != WATCHER_ID:
+        await update.message.reply_text("فقط برای ناظر 👀")
         return
-
+    
     await daily_question(context)
     await update.message.reply_text("✅ سؤال تستی ارسال شد")
 
 
-# ====== 🎯 مدیریت دکمه‌ها ======
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت کلیک روی دکمه‌ها"""
     query = update.callback_query
     uid = query.from_user.id
-
+    
     if uid != TARGET_ID:
         await query.answer("این دکمه برای آتناست 😉", show_alert=True)
         return
-
+    
     await query.answer()
-
+    
     try:
         action = query.data
-
-        # نمایش استریک
+        
         if action == "show_streak":
             data = get_streak_data()
-            streak, _, best = data[0], data[1], data[2]
-
-            status_text = (
-                f"📊 وضعیت استریک آتنا:\n\n"
-                f"🔥 استریک فعلی: {streak} روز\n"
-                f"🏆 بهترین رکورد: {best} روز\n"
-                f"💪 به همین روال ادامه بده!"
+            streak, _, best = data
+            await query.edit_message_text(
+                f"📊 وضعیت:\n\n🔥 استریک: {streak}\n🏆 رکورد: {best}"
             )
-
-            await query.edit_message_text(status_text)
             return
-
-        # پاسخ بله یا نه
+        
         now = datetime.now(TZ_IR).date()
         data = get_streak_data()
         streak = data[0]
-
+        
         if action == "yes":
             streak += 1
             update_streak(streak, now.isoformat())
             add_history(True)
-
-            success_msg = random.choice(SUCCESS_MESSAGES).format(streak)
-            await query.edit_message_text(success_msg)
-
-            # پیام به ناظر
+            
+            await query.edit_message_text(
+                random.choice(SUCCESS_MESSAGES).format(streak)
+            )
+            
             await context.bot.send_message(
                 chat_id=WATCHER_ID,
-                text=f"✅ آتنا امروز رفت مغازه\n🔥 استریک: {streak} روز"
+                text=f"✅ آتنا رفت مغازه\n🔥 استریک: {streak}"
             )
-
-            # بررسی سنگ‌های میانی (Milestones)
+            
             if streak in MILESTONE_MESSAGES:
-                milestone_msg = MILESTONE_MESSAGES[streak]
-                await context.bot.send_message(chat_id=TARGET_ID, text=milestone_msg)
+                milestone = MILESTONE_MESSAGES[streak]
+                await context.bot.send_message(chat_id=TARGET_ID, text=milestone)
                 await context.bot.send_message(
-                    chat_id=WATCHER_ID,
-                    text=f"🎊 آتنا به {streak} روز رسید! {milestone_msg}"
+                    chat_id=WATCHER_ID, 
+                    text=f"🎊 {streak} روز! {milestone}"
                 )
-
-            logger.info(f"✅ آتنا پاسخ مثبت داد — Streak: {streak}")
-
-        else:  # no
+            
+            logger.info(f"✅ Positive answer — Streak: {streak}")
+            
+        else:
             old_streak = streak
             update_streak(0, now.isoformat())
             add_history(False)
-
+            
             await query.edit_message_text(
-                f"😔 استریک از {old_streak} روز به صفر رسید.\n"
-                f"اشکال نداره آتنا! فردا دوباره شروع می‌کنیم 💪"
+                f"😔 استریک از {old_streak} به صفر رسید\n"
+                f"فردا دوباره شروع! 💪"
             )
-
+            
             await context.bot.send_message(
                 chat_id=WATCHER_ID,
-                text=f"❌ آتنا امروز نرفت مغازه\n📉 استریک: {old_streak} → 0"
+                text=f"❌ آتنا نرفت\n📉 {old_streak} → 0"
             )
-
-            logger.info(f"❌ آتنا پاسخ منفی داد — Streak reset (was {old_streak})")
-
+            
+            logger.info(f"❌ Negative answer — Reset (was {old_streak})")
+            
     except Exception as e:
-        logger.error(f"Error in button_callback: {e}")
-        await query.edit_message_text("⚠️ خطایی رخ داد. دوباره تلاش کن.")
+        logger.error(f"Button error: {e}")
+        await query.edit_message_text("⚠️ خطا رخ داد")
 
 
-# ====== 📊 دستور /status (برای ناظر) ======
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش وضعیت کامل (فقط برای ناظر)"""
-    if update.message.chat_id != WATCHER_ID:
-        await update.message.reply_text("این دستور مخصوص ناظره 👀")
+    user_id = update.message.from_user.id
+    
+    if user_id != WATCHER_ID:
+        await update.message.reply_text("فقط برای ناظر 👀")
         return
-
+    
     try:
         data = get_streak_data()
         streak, last_answer, best = data
-
+        
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT COUNT(*) FROM history WHERE user_id=? AND went_to_shop=1",
                 (TARGET_ID,)
             )
-            total_success = cursor.fetchone()[0]
-
-        current_time = datetime.now(TZ_IR).strftime('%Y-%m-%d %H:%M:%S')
-
-        status_text = (
-            f"📊 **گزارش وضعیت آتنا**\n\n"
-            f"🔥 استریک فعلی: **{streak}** روز\n"
-            f"🏆 بهترین رکورد: **{best}** روز\n"
-            f"✅ مجموع روزهای موفق: **{total_success}** روز\n"
-            f"📅 آخرین پاسخ: {last_answer if last_answer else 'هنوز پاسخی نداده'}\n"
-            f"⏰ زمان فعلی تهران: {current_time}\n"
+            total = cursor.fetchone()[0]
+        
+        current = datetime.now(TZ_IR).strftime('%Y-%m-%d %H:%M:%S')
+        
+        await update.message.reply_text(
+            f"📊 **گزارش آتنا**\n\n"
+            f"🔥 استریک: **{streak}**\n"
+            f"🏆 رکورد: **{best}**\n"
+            f"✅ مجموع: **{total}**\n"
+            f"📅 آخرین: {last_answer or 'ندارد'}\n"
+            f"⏰ تهران: {current}",
+            parse_mode='Markdown'
         )
-
-        await update.message.reply_text(status_text, parse_mode='Markdown')
-
     except Exception as e:
-        logger.error(f"Error in status command: {e}")
-        await update.message.reply_text("⚠️ خطا در دریافت اطلاعات")
+        logger.error(f"Status error: {e}")
+        await update.message.reply_text("⚠️ خطا")
 
 
-# ====== 📜 دستور /history (برای ناظر) ======
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش ۷ روز گذشته"""
-    if update.message.chat_id != WATCHER_ID:
-        await update.message.reply_text("این دستور مخصوص ناظره 👀")
+    user_id = update.message.from_user.id
+    
+    if user_id != WATCHER_ID:
+        await update.message.reply_text("فقط برای ناظر 👀")
         return
-
+    
     try:
         with get_db() as conn:
             cursor = conn.cursor()
@@ -408,56 +367,47 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 (TARGET_ID,)
             )
             records = cursor.fetchall()
-
+        
         if not records:
-            await update.message.reply_text("هنوز تاریخچه‌ای ثبت نشده")
+            await update.message.reply_text("هنوز تاریخچه ندارد")
             return
-
-        history_text = "📜 **تاریخچه ۷ روز گذشته:**\n\n"
+        
+        history_text = "📜 **تاریخچه ۷ روز:**\n\n"
         for rec_date, went in records:
             emoji = "✅" if went else "❌"
             history_text += f"{emoji} {rec_date}\n"
-
+        
         await update.message.reply_text(history_text, parse_mode='Markdown')
-
     except Exception as e:
-        logger.error(f"Error in history command: {e}")
-        await update.message.reply_text("⚠️ خطا در دریافت تاریخچه")
+        logger.error(f"History error: {e}")
+        await update.message.reply_text("⚠️ خطا")
 
 
-# ====== 💬 پاسخ به پیام‌های عادی ======
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پاسخ به متن‌های عادی"""
-    user_id = update.message.chat_id
+    user_id = update.message.from_user.id
     text = update.message.text.lower()
-
+    
     if user_id == TARGET_ID:
-        if any(word in text for word in ['سلام', 'هلو', 'هی', 'hi', 'hello']):
-            await update.message.reply_text(
-                "سلام آتنا جون! 💎\n"
-                "برای دیدن آمارت /mystats بزن 📊"
-            )
+        if any(w in text for w in ['سلام', 'هی', 'hi', 'hello']):
+            await update.message.reply_text("سلام آتنا! 💎\n📊 /mystats")
         elif 'استریک' in text or 'streak' in text:
             data = get_streak_data()
             streak = data[0] if data else 0
-            await update.message.reply_text(f"🔥 استریک فعلیت: {streak} روز")
+            await update.message.reply_text(f"🔥 استریک: {streak} روز")
         else:
-            await update.message.reply_text(
-                "برای دیدن دستورات /start بزن 😊"
-            )
+            await update.message.reply_text("برای راهنما /start بزن 😊")
     elif user_id == WATCHER_ID:
-        await update.message.reply_text(
-            "برای دیدن دستورات /start بزن 👀"
-        )
+        await update.message.reply_text("سلام آریان! 👀\n/start")
+    else:
+        await update.message.reply_text("مخصوص آتنا و آریان 😊")
 
 
-# ====== 🚀 تابع اصلی ======
+# ====== 🚀 اصلی ======
 def main():
-    """راه‌اندازی بات"""
     init_db()
-
+    
     app = ApplicationBuilder().token(TOKEN).build()
-
+    
     # هندلرها
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("mystats", my_stats))
@@ -466,45 +416,41 @@ def main():
     app.add_handler(CommandHandler("test_question", test_question))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-
-    # دسترسی به job_queue برای زمان‌بندی
+    
+    # زمان‌بندی
     job_queue = app.job_queue
-
-    # ارسال سؤال روزانه - ساعت 21:00 تهران
+    
     job_queue.run_daily(
         daily_question,
-        time=time(21, 0),  # 21:00
+        time=time(21, 0),
         days=(0, 1, 2, 3, 4, 5, 6),
         name="daily_question"
     )
-
-    # بررسی عدم پاسخ - ساعت 23:00 تهران
+    
     job_queue.run_daily(
         check_no_response,
-        time=time(23, 0),  # 23:00
+        time=time(23, 0),
         days=(0, 1, 2, 3, 4, 5, 6),
         name="check_no_response"
     )
-
-    current_time = datetime.now(TZ_IR).strftime('%Y-%m-%d %H:%M:%S')
-
+    
+    current = datetime.now(TZ_IR).strftime('%Y-%m-%d %H:%M:%S')
+    
     logger.info("=" * 50)
-    logger.info("🤖 AthenaBot started successfully!")
-    logger.info(f"⏰ Current Tehran time: {current_time}")
-    logger.info("📅 Schedule:")
-    logger.info("   - Daily question: 21:00 Tehran time")
-    logger.info("   - Check response: 23:00 Tehran time")
+    logger.info("🤖 AthenaBot started!")
+    logger.info(f"⏰ Tehran time: {current}")
+    logger.info("📅 Schedule: 21:00 & 23:00")
     logger.info("=" * 50)
+    
+    # ✅ اصلاح شده
+    app.run_polling(drop_pending_updates=True)
 
-    # اجرای بات
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-
-# ====== ▶️ اجرا ======
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        logger.info("👋 Bot stopped by user")
+        logger.info("👋 Stopped by user")
     except Exception as e:
-        logger.critical(f"💥 Fatal error: {e}")
+        logger.critical(f"💥 Fatal: {e}")
+        raise
